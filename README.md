@@ -9,7 +9,6 @@ Set env vars for flowdock authentication.
 FLOWDOCK_USERNAME and FLOWDOCK_PASSWORD
 
 ```
-
 You must also have a `~/.java.policy` file in your home directory. eg
 
 ```
