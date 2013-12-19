@@ -10,6 +10,14 @@ FLOWDOCK_USERNAME and FLOWDOCK_PASSWORD
 
 ```
 
+You must also have a `~/.java.policy` file in your home directory. eg
+
+```
+grant {
+  permission java.security.AllPermission;
+};
+```
+
 Start it by passing the flowdock org name and room name.
 
 ```
