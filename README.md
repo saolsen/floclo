@@ -2,6 +2,8 @@
 
 A bot that watches a flowdock chat room and evaluates clojure expressions.
 
+![](https://dl.dropboxusercontent.com/s/jwsmm3fbf17l0jj/Screenshot%202013-12-19%2019.57.22.png)
+
 ## Usage
 
 Set env vars for flowdock authentication.
