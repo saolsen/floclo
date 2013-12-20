@@ -84,7 +84,10 @@
              (try
                (let [form (clojure.string/replace content "#clj" "")
                      {:keys [out result]} (eval-clojure-safely form)
-                     output (str out "=> " (pr-str result))]
+                     output (str out  "\n    "
+                                 (with-out-str
+                                   (clojure.pprint/pprint result)))
+                      ]
                  (post-message org room output))
                (catch Exception e
                  (post-message org room
