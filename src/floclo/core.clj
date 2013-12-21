@@ -88,6 +88,13 @@
                       :c (.read r)}))))))
     messages))
 
+(defn get-thread-id
+  [m]
+  (let [influx (filterv #(.startsWith % "influx") (get m "tags"))]
+    (if (seq influx)
+      (subs (first influx) (inc (.indexOf (first influx) ":")))
+      (get m "id"))))
+
 (defn eval-clojure [org room c]
    (while true
      (let [m (<!! c)]
@@ -104,11 +111,7 @@
                                  (with-out-str
                                    (clojure.pprint/pprint result)))
                      ]
-                 (let [influx (filterv #(.startsWith % "influx") tags)]
-                   (let [id (if (seq influx)
-                                 (subs (first influx) (inc (.indexOf (first influx) ":")))
-                                 (get m "id"))]
-                     (post-comment org room output id))))
+                 (post-comment org room output (get-thread-id m)))
                (catch Exception e
                  (post-message org
                                room
