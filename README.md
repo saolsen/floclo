@@ -35,6 +35,8 @@ Evaluate any clojure expression (well, any safe expression) by tagging it #clj
 => 6
 ```
 
+Set the FLOWDOCK_TAG environment variable to change the tag it's listening for.
+
 ## License
 
 Copyright © 2013 Stephen Olsen
