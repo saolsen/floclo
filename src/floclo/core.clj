@@ -3,6 +3,7 @@
             [clojail.testers :refer [secure-tester]]
             [clojure.core.async :refer [chan thread >!! go <!! <!]]
             [clojure.data.json :as json]
+            [clojure.string :as string]
             [environ.core :refer [env]]
             [clj-http.client :as req])
   (:import (java.io StringWriter))
@@ -80,9 +81,9 @@
          (println m)
          (let [tags (get m "tags")
                content (get m "content")]
-           (when (contains? (set tags) "clj")
+           (when (contains? (set tags) (or (env :flowdock-tag) "clj"))
              (try
-               (let [form (clojure.string/replace content "#clj" "")
+               (let [form (string/replace content (str "#" (or (env :flowdock-tag) "clj")) "")
                      {:keys [out result]} (eval-clojure-safely form)
                      output (str out  "\n    "
                                  (with-out-str
