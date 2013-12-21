@@ -27,6 +27,9 @@
 (defn messages-endpoint [org room]
   (str "https://api.flowdock.com/flows/" org "/" room "/" "messages"))
 
+(defn comments-endpoint [org room message-id]
+  (str "https://api.flowdock.com/flows/" org "/" room "/messages/" message-id "/comments"))
+
 ;; Hardcoded to use basic auth define in environment for now.
 (defn connect-to-flow-stream
   "Connects to the streaming endpoint."
@@ -41,13 +44,24 @@
 (defn post-message
   "Posts a message."
   [org room message]
-  (let [req (req/post (messages-endpoint org room)
+  (let [res (req/post (messages-endpoint org room)
                        {:basic-auth [(env :flowdock-username)
                                      (env :flowdock-password)]
                         :headers {"Content-Type" "application/json"}
                         :body (json/write-str {:event "message"
                                                :content message})})]
-    (json/read-str (:body req))))
+    (json/read-str (:body res))))
+
+(defn post-comment
+  "Posts a comment (threaded message)."
+  [org room message message-id]
+  (let [res (req/post (comments-endpoint org room message-id)
+                       {:basic-auth [(env :flowdock-username)
+                                     (env :flowdock-password)]
+                        :headers {"Content-Type" "application/json"}
+                        :body (json/write-str {:event "comment"
+                                               :content message})})]
+    (json/read-str (:body res))))
 
 (defn to-message [char-seq]
   (->> char-seq
@@ -80,18 +94,24 @@
        (when (= (get m "app") "chat")
          (println m)
          (let [tags (get m "tags")
-               content (get m "content")]
+               content (get m "content")
+               text (if (map? content) (get content "text") content)]
            (when (contains? (set tags) (or (env :flowdock-tag) "clj"))
              (try
-               (let [form (string/replace content (str "#" (or (env :flowdock-tag) "clj")) "")
+               (let [form (string/replace text (str "#" (or (env :flowdock-tag) "clj")) "")
                      {:keys [out result]} (eval-clojure-safely form)
                      output (str out  "\n    "
                                  (with-out-str
                                    (clojure.pprint/pprint result)))
-                      ]
-                 (post-message org room output))
+                     ]
+                 (let [influx (filterv #(.startsWith % "influx") tags)]
+                   (let [id (if (seq influx)
+                                 (subs (first influx) (inc (.indexOf (first influx) ":")))
+                                 (get m "id"))]
+                     (post-comment org room output id))))
                (catch Exception e
-                 (post-message org room
+                 (post-message org
+                               room
                                (str "Error evaluating expression." e))))))))))
 
 (defn -main [org room]
