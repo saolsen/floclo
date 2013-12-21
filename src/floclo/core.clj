@@ -4,9 +4,11 @@
             [clojure.core.async :refer [chan thread >!! go <!! <!]]
             [clojure.data.json :as json]
             [clojure.string :as string]
+            [clojure.repl :as repl]
             [environ.core :refer [env]]
             [clj-http.client :as req])
-  (:import (java.io StringWriter))
+  (:import (java.io StringWriter)
+           (clojure.lang ExceptionInfo))
   (:gen-class))
 
 (def sb (sandbox secure-tester))
@@ -113,9 +115,13 @@
                      ]
                  (post-comment org room output (get-thread-id m)))
                (catch Exception e
-                 (post-message org
-                               room
-                               (str "Error evaluating expression." e))))))))))
+                 (repl/pst e)
+                 (let [message (str "Error: "
+                                    (.getName (.getClass e))
+                                    ": "
+                                    (.getMessage e))
+                       id (get-thread-id m)]
+                   (post-comment org room message id))))))))))
 
 (defn -main [org room]
   (eval-clojure org room (consume-stream org room)))
