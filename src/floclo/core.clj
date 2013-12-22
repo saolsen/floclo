@@ -1,8 +1,9 @@
 (ns floclo.core
   (:require [clojail.core :refer [sandbox]]
-            [clojail.testers :refer [secure-tester]]
+            [clojail.testers :refer [secure-tester secure-tester-without-def]]
             [clojure.core.async :refer [chan thread >!! go <!! <!]]
             [clojure.data.json :as json]
+            [clojure.pprint :as p]
             [clojure.string :as string]
             [clojure.repl :as repl]
             [environ.core :refer [env]]
@@ -10,18 +11,6 @@
   (:import (java.io StringWriter)
            (clojure.lang ExceptionInfo))
   (:gen-class))
-
-(def sb (sandbox secure-tester))
-
-(defn eval-clojure-safely
-  [clj]
-  (binding [*read-eval* false]
-    (let [form (read-string clj)
-          writer (StringWriter.)
-          evald (sb form {#'*out* writer})]
-      {:form form
-       :out (str writer)
-       :result evald})))
 
 (defn streaming-endpoint [org room]
   (str "https://stream.flowdock.com/flows/" org "/" room))
@@ -97,31 +86,53 @@
       (subs (first influx) (inc (.indexOf (first influx) ":")))
       (get m "id"))))
 
+(let [sb (sandbox secure-tester-without-def)]
+  (defn sandbox-eval
+    [clj-str ns-obj]
+    (let [*read-eval* false
+          writer (StringWriter.)
+          result (sb (read-string clj-str) {#'*ns* ns-obj #'*out* writer})]
+      {:out writer :result result})))
+
+(defn init-ns
+  [new-ns-name]
+  (create-ns new-ns-name)
+  (let [old-ns (ns-name *ns*)]
+    (in-ns new-ns-name)
+    (clojure.core/refer 'clojure.core)
+    (in-ns old-ns)
+    (find-ns new-ns-name)))
+
+(defn eval-in-thread
+  [thread-id clj-str]
+  (let [thread-ns-name (symbol (str "fd" thread-id))]
+    (when (nil? (find-ns thread-ns-name))
+      (init-ns thread-ns-name))
+    (sandbox-eval clj-str (find-ns thread-ns-name))))
+
 (defn eval-clojure [org room c]
-   (while true
-     (let [m (<!! c)]
-       (when (= (get m "app") "chat")
-         (println m)
-         (let [tags (get m "tags")
-               content (get m "content")
-               text (if (map? content) (get content "text") content)]
-           (when (contains? (set tags) (or (env :flowdock-tag) "clj"))
-             (try
-               (let [form (string/replace text (str "#" (or (env :flowdock-tag) "clj")) "")
-                     {:keys [out result]} (eval-clojure-safely form)
-                     output (str out  "\n    "
-                                 (with-out-str
-                                   (clojure.pprint/pprint result)))
-                     ]
-                 (post-comment org room output (get-thread-id m)))
-               (catch Exception e
-                 (repl/pst e)
-                 (let [message (str "Error: "
-                                    (.getName (.getClass e))
-                                    ": "
-                                    (.getMessage e))
-                       id (get-thread-id m)]
-                   (post-comment org room message id))))))))))
+  (while true
+    (let [m (<!! c)]
+      (when (= (get m "app") "chat")
+        (p/pprint m)
+        (let [tags (get m "tags")
+              content (get m "content")
+              text (if (map? content) (get content "text") content)]
+          (when (contains? (set tags) (or (env :flowdock-tag) "clj"))
+            (try
+              (let [clj-str (string/replace text (str "#" (or (env :flowdock-tag) "clj")) "")
+                    {:keys [out result]} (eval-in-thread (get-thread-id m) clj-str)
+                    output (str out  "\n    " (with-out-str (p/pprint result)))
+                    ]
+                (post-comment org room output (get-thread-id m)))
+              (catch Exception e
+                (repl/pst e)
+                (let [message (str "Error: "
+                                   (.getName (.getClass e))
+                                   ": "
+                                   (.getMessage e))
+                      id (get-thread-id m)]
+                  (post-comment org room message id))))))))))
 
 (defn -main [org room]
   (eval-clojure org room (consume-stream org room)))
