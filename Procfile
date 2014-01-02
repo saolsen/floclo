@@ -1,1 +1,1 @@
-web: lein with-profiles web trampoline run
+web: lein with-profiles production trampoline run
