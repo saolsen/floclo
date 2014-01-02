@@ -21,13 +21,15 @@
 (defn comments-endpoint [org room message-id]
   (str (messages-endpoint org room) "/" message-id "/comments"))
 
+(def auth [(env :flowdock-username)
+           (env :flowdock-password)])
+
 ;; Hardcoded to use basic auth defined in environment for now.
 (defn connect-to-flow-stream
   "Connects to the streaming endpoint."
   [org room]
   (let [req (req/get (streaming-endpoint org room)
-                      {:basic-auth [(env :flowdock-username)
-                                    (env :flowdock-password)]
+                      {:basic-auth auth
                        :headers {"Accept" "application/json"}
                        :as :stream})]
     (:body req)))
@@ -36,8 +38,7 @@
   "Posts a message."
   [org room message]
   (let [res (req/post (messages-endpoint org room)
-                       {:basic-auth [(env :flowdock-username)
-                                     (env :flowdock-password)]
+                       {:basic-auth auth
                         :headers {"Content-Type" "application/json"}
                         :body (json/write-str {:event "message"
                                                :content message})})]
@@ -47,8 +48,7 @@
   "Posts a comment (threaded message)."
   [org room message message-id]
   (let [res (req/post (comments-endpoint org room message-id)
-                       {:basic-auth [(env :flowdock-username)
-                                     (env :flowdock-password)]
+                       {:basic-auth auth
                         :headers {"Content-Type" "application/json"}
                         :body (json/write-str {:event "comment"
                                                :content message})})]
@@ -111,7 +111,7 @@
       (init-ns thread-ns-name))
     (sandbox-eval clj-str (find-ns thread-ns-name))))
 
-(def tag (or (env :flowdock-tag "clj")))
+(def tag (or (env :flowdock-tag) "clj"))
 
 (defn strip-tag
   [s]
@@ -130,7 +130,7 @@
               (let [clj-str (strip-tag text)
                     {:keys [out result]} (eval-in-thread (get-thread-id m)
                                                          clj-str)
-                    output (str out  "\n    " (with-out-str (p/pprint result)))]
+                    output (str out "\n    " (with-out-str (p/pprint result)))]
                 (post-comment org room output (get-thread-id m)))
               (catch Exception e
                 (repl/pst e)
