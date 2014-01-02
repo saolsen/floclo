@@ -21,17 +21,28 @@
 (defn comments-endpoint [org room message-id]
   (str (messages-endpoint org room) "/" message-id "/comments"))
 
+(def users-endpoint "https://api.flowdock.com/users")
+
 (def auth [(env :flowdock-username)
            (env :flowdock-password)])
 
 ;; Hardcoded to use basic auth defined in environment for now.
+(defn get-users
+  "Pulls the users resource."
+  []
+  (let [res (req/get users-endpoint
+                     {:basic-auth auth
+                      :headers {"Accept" "application/json"}})]
+    (json/read-str (:body res))))
+
+
 (defn connect-to-flow-stream
   "Connects to the streaming endpoint."
   [org room]
   (let [req (req/get (streaming-endpoint org room)
-                      {:basic-auth auth
-                       :headers {"Accept" "application/json"}
-                       :as :stream})]
+                     {:basic-auth auth
+                      :headers {"Accept" "application/json"}
+                      :as :stream})]
     (:body req)))
 
 (defn post-message
@@ -79,6 +90,13 @@
               (recur (conj s c) (.read r)))))))
     messages))
 
+(defn get-user-id
+  "Gets the :flowdock-user id."
+  []
+  (let [users (get-users)
+        mine (first (filter #(= (get % "email") (env :flowdock-username)) users))]
+    (get mine "id")))
+
 (defn get-thread-id
   [m]
   (let [influx (filterv #(.startsWith % "influx") (get m "tags"))]
@@ -118,28 +136,31 @@
   (string/replace s (str "#" tag) ""))
 
 (defn eval-clojure [org room c]
-  (while true
-    (let [m (<!! c)]
-      (when (= (get m "app") "chat")
-        (p/pprint m)
-        (let [tags (get m "tags")
-              content (get m "content")
-              text (if (map? content) (get content "text") content)]
-          (when (contains? (set tags) tag)
-            (try
-              (let [clj-str (strip-tag text)
-                    {:keys [out result]} (eval-in-thread (get-thread-id m)
-                                                         clj-str)
-                    output (str out "\n    " (with-out-str (p/pprint result)))]
-                (post-comment org room output (get-thread-id m)))
-              (catch Exception e
-                (repl/pst e)
-                (let [message (str "Error: "
-                                   (.getName (.getClass e))
-                                   ": "
-                                   (.getMessage e))
-                      id (get-thread-id m)]
-                  (post-comment org room message id))))))))))
+  (let [current-user-id (str (get-user-id))]
+    (while true
+      (let [m (<!! c)]
+        (when (= (get m "app") "chat")
+          (p/pprint m)
+          (let [tags (get m "tags")
+                content (get m "content")
+                text (if (map? content) (get content "text") content)
+                user (get m "user")]
+            (when (and (contains? (set tags) tag)
+                       (not= user current-user-id))
+              (try
+                (let [clj-str (strip-tag text)
+                      {:keys [out result]} (eval-in-thread (get-thread-id m)
+                                                           clj-str)
+                      output (str out "\n    " (with-out-str (p/pprint result)))]
+                  (post-comment org room output (get-thread-id m)))
+                (catch Exception e
+                  (repl/pst e)
+                  (let [message (str "Error: "
+                                     (.getName (.getClass e))
+                                     ": "
+                                     (.getMessage e))
+                        id (get-thread-id m)]
+                    (post-comment org room message id)))))))))))
 
 (defn -main [org room]
   (eval-clojure org room (consume-stream org room)))
