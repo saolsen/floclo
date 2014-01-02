@@ -19,9 +19,9 @@
   (str "https://api.flowdock.com/flows/" org "/" room "/" "messages"))
 
 (defn comments-endpoint [org room message-id]
-  (str "https://api.flowdock.com/flows/" org "/" room "/messages/" message-id "/comments"))
+  (str (messages-endpoint org room) "/" message-id "/comments"))
 
-;; Hardcoded to use basic auth define in environment for now.
+;; Hardcoded to use basic auth defined in environment for now.
 (defn connect-to-flow-stream
   "Connects to the streaming endpoint."
   [org room]
@@ -70,13 +70,13 @@
         (let [stream (connect-to-flow-stream org room)
               r (clojure.java.io/reader stream)]
           (println "Connected")
-          (loop [{:keys [s c]} {:s [] :c (.read r)}]
+          (loop [s []
+                 c (.read r)]
             (condp = c
               (int \return) (do (>!! messages (to-message s))
-                                (recur {:s [] :c (.read r)}))
+                                (recur [] (.read r)))
               -1 (println "Lost Connection")
-              (recur {:s (conj s c)
-                      :c (.read r)}))))))
+              (recur (conj s c) (.read r)))))))
     messages))
 
 (defn get-thread-id
@@ -86,13 +86,14 @@
       (subs (first influx) (inc (.indexOf (first influx) ":")))
       (get m "id"))))
 
-(let [sb (sandbox secure-tester-without-def)]
-  (defn sandbox-eval
-    [clj-str ns-obj]
-    (let [*read-eval* false
-          writer (StringWriter.)
-          result (sb (read-string clj-str) {#'*ns* ns-obj #'*out* writer})]
-      {:out writer :result result})))
+(def sb (sandbox secure-tester-without-def))
+
+(defn sandbox-eval
+  [clj-str ns-obj]
+  (let [*read-eval* false
+        writer (StringWriter.)
+        result (sb (read-string clj-str) {#'*ns* ns-obj #'*out* writer})]
+    {:out writer :result result}))
 
 (defn init-ns
   [new-ns-name]
@@ -110,6 +111,12 @@
       (init-ns thread-ns-name))
     (sandbox-eval clj-str (find-ns thread-ns-name))))
 
+(def tag (or (env :flowdock-tag "clj")))
+
+(defn strip-tag
+  [s]
+  (string/replace s (str "#" tag) ""))
+
 (defn eval-clojure [org room c]
   (while true
     (let [m (<!! c)]
@@ -118,12 +125,12 @@
         (let [tags (get m "tags")
               content (get m "content")
               text (if (map? content) (get content "text") content)]
-          (when (contains? (set tags) (or (env :flowdock-tag) "clj"))
+          (when (contains? (set tags) tag)
             (try
-              (let [clj-str (string/replace text (str "#" (or (env :flowdock-tag) "clj")) "")
-                    {:keys [out result]} (eval-in-thread (get-thread-id m) clj-str)
-                    output (str out  "\n    " (with-out-str (p/pprint result)))
-                    ]
+              (let [clj-str (strip-tag text)
+                    {:keys [out result]} (eval-in-thread (get-thread-id m)
+                                                         clj-str)
+                    output (str out  "\n    " (with-out-str (p/pprint result)))]
                 (post-comment org room output (get-thread-id m)))
               (catch Exception e
                 (repl/pst e)
