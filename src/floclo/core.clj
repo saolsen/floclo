@@ -8,8 +8,7 @@
             [clojure.repl :as repl]
             [environ.core :refer [env]]
             [clj-http.client :as req])
-  (:import (java.io StringWriter)
-           (clojure.lang ExceptionInfo))
+  (:import (clojure.lang ExceptionInfo))
   (:gen-class))
 
 (defn streaming-endpoint [org room]
@@ -104,63 +103,22 @@
       (subs (first influx) (inc (.indexOf (first influx) ":")))
       (get m "id"))))
 
-(def sb (sandbox secure-tester-without-def))
-
-(defn sandbox-eval
-  [clj-str ns-obj]
-  (let [*read-eval* false
-        writer (StringWriter.)
-        result (sb (read-string clj-str) {#'*ns* ns-obj #'*out* writer})]
-    {:out writer :result result}))
-
-(defn init-ns
-  [new-ns-name]
-  (create-ns new-ns-name)
-  (let [old-ns (ns-name *ns*)]
-    (in-ns new-ns-name)
-    (clojure.core/refer 'clojure.core)
-    (in-ns old-ns)
-    (find-ns new-ns-name)))
-
-(defn eval-in-thread
-  [thread-id clj-str]
-  (let [thread-ns-name (symbol (str "fd" thread-id))]
-    (when (nil? (find-ns thread-ns-name))
-      (init-ns thread-ns-name))
-    (sandbox-eval clj-str (find-ns thread-ns-name))))
-
 (def tag (or (env :flowdock-tag) "clj"))
 
 (defn strip-tag
   [s]
   (string/replace s (str "#" tag) ""))
 
-(defn eval-clojure [org room c]
-  (let [current-user-id (str (get-user-id))]
+(defn start [org room plugins-map]
+  (let [c (consume-stream org room)
+        current-user-id (str (get-user-id))]
     (while true
       (let [m (<!! c)]
         (when (= (get m "app") "chat")
           (p/pprint m)
           (let [tags (get m "tags")
-                content (get m "content")
-                text (if (map? content) (get content "text") content)
+                tag-map (get plugins-map (keyword room))
+                plugins (remove nil? (map tag-map (map keyword tags)))
                 user (get m "user")]
-            (when (and (contains? (set tags) tag)
-                       (not= user current-user-id))
-              (try
-                (let [clj-str (strip-tag text)
-                      {:keys [out result]} (eval-in-thread (get-thread-id m)
-                                                           clj-str)
-                      output (str out "\n    " (with-out-str (p/pprint result)))]
-                  (post-comment org room output (get-thread-id m)))
-                (catch Exception e
-                  (repl/pst e)
-                  (let [message (str "Error: "
-                                     (.getName (.getClass e))
-                                     ": "
-                                     (.getMessage e))
-                        id (get-thread-id m)]
-                    (post-comment org room message id)))))))))))
-
-(defn -main [org room]
-  (eval-clojure org room (consume-stream org room)))
+            (when-not (= user current-user-id)
+              (doall (map #(% org room m) plugins)))))))))
