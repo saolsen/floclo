@@ -33,11 +33,9 @@
 
 (defn clojure
   [org room message]
-  (let [content (get message "content")
-        text (if (map? content) (get content "text") content)
-        thread-id (f/get-thread-id message)]
+  (let [thread-id (f/get-thread-id message)]
     (try
-      (let [clj-str (f/strip-tags text)
+      (let [clj-str (f/strip-tags (f/get-text message))
             {:keys [out result]} (eval-in-thread thread-id clj-str)
             output (str out "\n    " (with-out-str (p/pprint result)))]
         (f/post-comment org room output thread-id))

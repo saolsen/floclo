@@ -90,6 +90,13 @@
               (recur (conj s c) (.read r)))))))
     messages))
 
+(defn get-text
+  [msg]
+  (let [content (get msg "content")]
+    (if (map? content)
+      (get content "text")
+      content)))
+
 (defn get-user-id
   "Gets the :flowdock-user id."
   []
