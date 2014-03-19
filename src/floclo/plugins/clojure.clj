@@ -33,12 +33,10 @@
 
 (defn eval-clj
   [org room message]
-  (println "IM HERE DONT IGNORE ME!")
   (let [content (get message "content")
         text (if (map? content) (get content "text") content)
         thread-id (f/get-thread-id message)]
     (try
-      (println "THIS IS MY TEXT" text)
       (let [clj-str (f/strip-tag text)
             {:keys [out result]} (eval-in-thread thread-id clj-str)
             output (str out "\n    " (with-out-str (p/pprint result)))]
