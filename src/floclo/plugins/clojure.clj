@@ -37,7 +37,7 @@
         text (if (map? content) (get content "text") content)
         thread-id (f/get-thread-id message)]
     (try
-      (let [clj-str (f/strip-tag text)
+      (let [clj-str (f/strip-tags text)
             {:keys [out result]} (eval-in-thread thread-id clj-str)
             output (str out "\n    " (with-out-str (p/pprint result)))]
         (f/post-comment org room output thread-id))

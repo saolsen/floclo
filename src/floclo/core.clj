@@ -105,9 +105,9 @@
 
 (def tag (or (env :flowdock-tag) "clj"))
 
-(defn strip-tag
+(defn strip-tags
   [s]
-  (string/replace s (str "#" tag) ""))
+  (string/replace s #"#[A-Za-z0-9_]+" ""))
 
 (defn start [org room plugins-map]
   (let [c (consume-stream org room)
