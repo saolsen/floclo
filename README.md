@@ -19,10 +19,18 @@ grant {
 };
 ```
 
-Start it by passing the flowdock org name and room name.
+Start it by passing the flowdock org name, room name, and a plugin config file.
 
 ```
-lein run orgname roomname
+lein run orgname roomname plugins.clj
+```
+
+Example plugins.clj
+
+```clojure
+{:main         ; room
+ {:clj clojure ; messags tagged #clj will invoke floclo.plugins.clojure/clojure
+  :echo echo}} ; messagestagged #echo will invoke floclo.plugins.echo/echo
 ```
 
 Evaluate any clojure expression (well, any safe expression) by tagging it #clj

@@ -7,7 +7,8 @@
             [clojure.string :as string]
             [clojure.repl :as repl]
             [environ.core :refer [env]]
-            [clj-http.client :as req])
+            [clj-http.client :as req]
+            [leiningen.core.utils :as u])
   (:import (clojure.lang ExceptionInfo))
   (:gen-class))
 
@@ -103,22 +104,25 @@
       (subs (first influx) (inc (.indexOf (first influx) ":")))
       (get m "id"))))
 
-(def tag (or (env :flowdock-tag) "clj"))
-
 (defn strip-tags
   [s]
   (string/replace s #"#[A-Za-z0-9_]+" ""))
 
+(defn lookup-plugin-var
+  [plugin-name]
+  (u/require-resolve (str "floclo.plugins." plugin-name) plugin-name))
+
 (defn start [org room plugins-map]
-  (let [c (consume-stream org room)
-        current-user-id (str (get-user-id))]
+  (let [c (consume-stream org room)]
     (while true
-      (let [m (<!! c)]
-        (when (= (get m "app") "chat")
-          (p/pprint m)
-          (let [tags (get m "tags")
-                tag-map (get plugins-map (keyword room))
-                plugins (remove nil? (map tag-map (map keyword tags)))
-                user (get m "user")]
-            (when-not (= user current-user-id)
-              (doall (map #(% org room m) plugins)))))))))
+      (let [msg (<!! c)]
+        (when (= (get msg "app") "chat")
+          (p/pprint msg)
+          (when-not (= (get msg "user") (str (get-user-id)))
+            (let [plugins (->> (get msg "tags")
+                               (map keyword)
+                               (map (get plugins-map (keyword room)))
+                               (remove nil?)
+                               (map name)
+                               (map lookup-plugin-var))]
+              (doall (map #(% org room msg) plugins)))))))))

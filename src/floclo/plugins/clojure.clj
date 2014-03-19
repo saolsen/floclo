@@ -31,7 +31,7 @@
       (init-ns thread-ns-name))
     (sandbox-eval clj-str (find-ns thread-ns-name))))
 
-(defn eval-clj
+(defn clojure
   [org room message]
   (let [content (get message "content")
         text (if (map? content) (get content "text") content)
